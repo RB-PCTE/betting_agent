@@ -38,6 +38,7 @@ This implementation plan follows `PROJECT_RULES.md` and is organized into the re
   - `implied_probability = 1 / decimal_odds`
 
 ## Phase 4: Line movement detection
+- Status: Implemented (foundation only: leader-source movement detection, dry-run output, unit tests).
 - Detect leader movement within `LEADER_MOVE_WINDOW_MINUTES`.
 - Compute movement metric using:
   - `odds_move_percent = (old_odds - new_odds) / old_odds`
