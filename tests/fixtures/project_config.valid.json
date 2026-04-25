@@ -1,0 +1,6 @@
+{
+  "approved_sources": ["betfair_exchange", "pinnacle", "book_a"],
+  "fallback_leader_source": "pinnacle",
+  "follower_sources": ["book_a"],
+  "stale_snapshot_max_age_seconds": 120
+}

@@ -1,5 +1,8 @@
 # Implementation Plan
 
+## Status
+- Step 3 (odds ingestion foundation): completed.
+
 This implementation plan follows `PROJECT_RULES.md` and is organized into the required phases.
 
 ## Phase 1: Database schema
