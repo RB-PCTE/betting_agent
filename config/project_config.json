@@ -1,0 +1,6 @@
+{
+  "approved_sources": [],
+  "fallback_leader_source": "",
+  "follower_sources": [],
+  "stale_snapshot_max_age_seconds": 0
+}

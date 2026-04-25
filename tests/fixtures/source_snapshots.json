@@ -1,0 +1,42 @@
+[
+  {
+    "source_name": "betfair_exchange",
+    "snapshot_time_utc": "2026-04-25T12:00:00Z",
+    "event": {
+      "event_id": "event-1",
+      "sport": "tennis",
+      "tournament_name": "Tournament",
+      "league_name": "League",
+      "start_time_utc": "2026-04-25T14:00:00Z",
+      "status": "scheduled"
+    },
+    "participants": [
+      {
+        "participant_id": "participant-a",
+        "event_id": "event-1",
+        "participant_name": "Player A",
+        "role": "player_a"
+      },
+      {
+        "participant_id": "participant-b",
+        "event_id": "event-1",
+        "participant_name": "Player B",
+        "role": "player_b"
+      }
+    ],
+    "market": {
+      "market_id": "market-1",
+      "event_id": "event-1",
+      "market_type": "match_winner",
+      "selection_participant_id": "participant-a",
+      "market_status": "active",
+      "is_uncertain": false
+    },
+    "odds": {
+      "decimal_odds": 2.1,
+      "is_suspended": false,
+      "is_missing": false,
+      "is_uncertain": false
+    }
+  }
+]
