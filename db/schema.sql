@@ -30,7 +30,8 @@ CREATE TABLE IF NOT EXISTS participants (
     participant_name TEXT NOT NULL,
     role TEXT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL,
-    updated_at TIMESTAMPTZ NOT NULL
+    updated_at TIMESTAMPTZ NOT NULL,
+    CONSTRAINT participants_role_chk CHECK (role IN ('player_a', 'player_b'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_participants_event_id ON participants (event_id);
@@ -70,7 +71,9 @@ CREATE TABLE IF NOT EXISTS odds_snapshots (
     is_missing BOOLEAN NOT NULL,
     is_uncertain BOOLEAN NOT NULL,
     ingested_at TIMESTAMPTZ NOT NULL,
-    CONSTRAINT odds_snapshots_source_role_chk CHECK (source_role IN ('leader', 'follower'))
+    CONSTRAINT odds_snapshots_source_role_chk CHECK (source_role IN ('leader', 'follower')),
+    CONSTRAINT odds_snapshots_decimal_odds_chk CHECK (decimal_odds > 1),
+    CONSTRAINT odds_snapshots_implied_probability_chk CHECK (implied_probability > 0 AND implied_probability < 1)
 );
 
 CREATE INDEX IF NOT EXISTS idx_odds_snapshots_event_market_time ON odds_snapshots (event_id, market_id, snapshot_time_utc);
@@ -96,7 +99,9 @@ CREATE TABLE IF NOT EXISTS detected_signals (
     signal_status TEXT NOT NULL,
     signal_reason TEXT NOT NULL,
     detected_at TIMESTAMPTZ NOT NULL,
-    CONSTRAINT detected_signals_status_chk CHECK (signal_status IN ('open', 'expired', 'resolved', 'dismissed'))
+    CONSTRAINT detected_signals_status_chk CHECK (signal_status IN ('open', 'expired', 'resolved', 'dismissed')),
+    CONSTRAINT detected_signals_leader_odds_chk CHECK (leader_old_odds > 1 AND leader_new_odds > 1),
+    CONSTRAINT detected_signals_follower_odds_chk CHECK (follower_odds > 1)
 );
 
 CREATE INDEX IF NOT EXISTS idx_detected_signals_event_market ON detected_signals (event_id, market_id);
@@ -118,7 +123,9 @@ CREATE TABLE IF NOT EXISTS bet_candidates (
     candidate_status TEXT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL,
     updated_at TIMESTAMPTZ NOT NULL,
-    CONSTRAINT bet_candidates_status_chk CHECK (candidate_status IN ('shortlisted', 'ignored', 'bet_logged', 'expired'))
+    CONSTRAINT bet_candidates_status_chk CHECK (candidate_status IN ('shortlisted', 'ignored', 'bet_logged', 'expired')),
+    CONSTRAINT bet_candidates_candidate_odds_chk CHECK (candidate_odds > 1),
+    CONSTRAINT bet_candidates_candidate_implied_probability_chk CHECK (candidate_implied_probability > 0 AND candidate_implied_probability < 1)
 );
 
 CREATE INDEX IF NOT EXISTS idx_bet_candidates_signal_id ON bet_candidates (signal_id);
@@ -139,7 +146,9 @@ CREATE TABLE IF NOT EXISTS manual_bets (
     placed_at TIMESTAMPTZ NOT NULL,
     notes TEXT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL,
-    updated_at TIMESTAMPTZ NOT NULL
+    updated_at TIMESTAMPTZ NOT NULL,
+    CONSTRAINT manual_bets_placed_odds_chk CHECK (placed_odds > 1),
+    CONSTRAINT manual_bets_stake_amount_chk CHECK (stake_amount > 0)
 );
 
 CREATE INDEX IF NOT EXISTS idx_manual_bets_candidate_id ON manual_bets (candidate_id);
@@ -156,7 +165,8 @@ CREATE TABLE IF NOT EXISTS closing_lines (
     source_name TEXT NOT NULL,
     closing_odds NUMERIC NOT NULL,
     closing_time_utc TIMESTAMPTZ NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL
+    created_at TIMESTAMPTZ NOT NULL,
+    CONSTRAINT closing_lines_closing_odds_chk CHECK (closing_odds > 1)
 );
 
 CREATE INDEX IF NOT EXISTS idx_closing_lines_event_market_selection ON closing_lines (event_id, market_id, selection_participant_id);
