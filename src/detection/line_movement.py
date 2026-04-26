@@ -3,16 +3,21 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, Iterable
+from uuid import uuid4
 
 
 @dataclass(frozen=True)
 class LeaderMovementConfig:
-    """Configuration values defined by PROJECT_RULES.md for Step 4."""
+    """Configuration values defined by PROJECT_RULES.md for Step 4 and Phase 5/6."""
 
     leader_move_threshold_percent: float
     leader_move_window_minutes: int
     stale_snapshot_max_age_seconds: int
     fallback_leader_source: str
+    follower_edge_threshold_percent: float = 0.08
+    minutes_to_start_block: int = 60
+    allow_within_60_minutes: bool = False
+    follower_sources: tuple[str, ...] = ()
 
     @property
     def leader_sources_priority(self) -> tuple[str, str, str]:
@@ -43,6 +48,46 @@ class LeaderMovementEvent:
             "leader_new_odds": self.leader_new_odds,
             "odds_move_percent": self.odds_move_percent,
             "leader_move_window_minutes": self.leader_move_window_minutes,
+            "detected_at": self.detected_at.isoformat(),
+        }
+
+
+@dataclass(frozen=True)
+class DetectedSignal:
+    """Eligible follower-vs-leader stale-price signal for detected_signals persistence."""
+
+    event_id: str
+    market_id: str
+    selection_participant_id: str
+    leader_source_name: str
+    follower_source_name: str
+    leader_old_odds: float
+    leader_new_odds: float
+    odds_move_percent: float
+    follower_odds: float
+    follower_edge_percent: float
+    leader_move_window_minutes: int
+    minutes_to_start_at_signal: int
+    signal_status: str
+    signal_reason: str
+    detected_at: datetime
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "event_id": self.event_id,
+            "market_id": self.market_id,
+            "selection_participant_id": self.selection_participant_id,
+            "leader_source_name": self.leader_source_name,
+            "follower_source_name": self.follower_source_name,
+            "leader_old_odds": self.leader_old_odds,
+            "leader_new_odds": self.leader_new_odds,
+            "odds_move_percent": self.odds_move_percent,
+            "follower_odds": self.follower_odds,
+            "follower_edge_percent": self.follower_edge_percent,
+            "leader_move_window_minutes": self.leader_move_window_minutes,
+            "minutes_to_start_at_signal": self.minutes_to_start_at_signal,
+            "signal_status": self.signal_status,
+            "signal_reason": self.signal_reason,
             "detected_at": self.detected_at.isoformat(),
         }
 
@@ -90,7 +135,7 @@ def _is_snapshot_usable(
 
 def fetch_snapshots_from_db(connection: Any) -> list[dict[str, Any]]:
     """
-    Read odds snapshots from the approved schema for Step 4 foundation logic.
+    Read odds snapshots from the approved schema for Step 4 and Phase 5/6 logic.
     """
 
     query = """
@@ -108,13 +153,14 @@ def fetch_snapshots_from_db(connection: Any) -> list[dict[str, Any]]:
         os.is_uncertain,
         e.sport,
         m.market_type,
-        m.is_uncertain AS market_is_uncertain
+        m.is_uncertain AS market_is_uncertain,
+        e.start_time_utc
     FROM odds_snapshots AS os
     JOIN events AS e ON e.event_id = os.event_id
     JOIN markets AS m ON m.market_id = os.market_id
-    WHERE os.source_role = 'leader'
-      AND e.sport = 'tennis'
+    WHERE e.sport = 'tennis'
       AND m.market_type = 'match_winner'
+      AND os.source_role IN ('leader', 'follower')
     """
 
     cursor = connection.cursor()
@@ -126,6 +172,7 @@ def fetch_snapshots_from_db(connection: Any) -> list[dict[str, Any]]:
     for row in rows:
         snap = dict(zip(columns, row))
         snap["snapshot_time_utc"] = _parse_utc(snap["snapshot_time_utc"])
+        snap["start_time_utc"] = _parse_utc(snap["start_time_utc"])
         snap["decimal_odds"] = float(snap["decimal_odds"])
         snapshots.append(snap)
     return snapshots
@@ -152,6 +199,8 @@ def detect_leader_movement_events(
     for snapshot in snapshots:
         copied = dict(snapshot)
         copied["snapshot_time_utc"] = _parse_utc(copied["snapshot_time_utc"])
+        if copied["source_role"] != "leader":
+            continue
         if copied["snapshot_time_utc"] < window_start:
             continue
         if copied["source_name"] not in config.leader_sources_priority:
@@ -218,3 +267,157 @@ def detect_leader_movement_events(
         return events
 
     return events
+
+
+def detect_open_signals(
+    snapshots: Iterable[dict[str, Any]],
+    leader_movement_events: Iterable[LeaderMovementEvent],
+    config: LeaderMovementConfig,
+    as_of_utc: datetime,
+) -> list[DetectedSignal]:
+    if as_of_utc.tzinfo is None:
+        as_of_utc = as_of_utc.replace(tzinfo=timezone.utc)
+    else:
+        as_of_utc = as_of_utc.astimezone(timezone.utc)
+
+    follower_sources = set(config.follower_sources)
+    usable_followers: dict[tuple[str, str, str, str], list[dict[str, Any]]] = {}
+    event_start_times: dict[tuple[str, str, str], datetime] = {}
+
+    for snapshot in snapshots:
+        copied = dict(snapshot)
+        copied["snapshot_time_utc"] = _parse_utc(copied["snapshot_time_utc"])
+        copied["start_time_utc"] = _parse_utc(copied["start_time_utc"])
+
+        if copied["source_role"] != "follower":
+            continue
+        if follower_sources and copied["source_name"] not in follower_sources:
+            continue
+        if not _is_snapshot_usable(
+            copied,
+            as_of_utc=as_of_utc,
+            stale_snapshot_max_age_seconds=config.stale_snapshot_max_age_seconds,
+        ):
+            continue
+
+        base_key = (
+            copied["event_id"],
+            copied["market_id"],
+            copied["selection_participant_id"],
+        )
+        event_start_times[base_key] = copied["start_time_utc"]
+
+        key = (*base_key, copied["source_name"])
+        usable_followers.setdefault(key, []).append(copied)
+
+    signals: list[DetectedSignal] = []
+
+    for movement in leader_movement_events:
+        base_key = (
+            movement.event_id,
+            movement.market_id,
+            movement.selection_participant_id,
+        )
+        start_time_utc = event_start_times.get(base_key)
+        if start_time_utc is None:
+            continue
+
+        minutes_to_start = int((start_time_utc - as_of_utc).total_seconds() // 60)
+        if not config.allow_within_60_minutes and minutes_to_start < config.minutes_to_start_block:
+            continue
+
+        for follower_source in config.follower_sources:
+            follower_key = (*base_key, follower_source)
+            follower_rows = usable_followers.get(follower_key, [])
+            if not follower_rows:
+                continue
+
+            newest_follower = max(follower_rows, key=lambda row: row["snapshot_time_utc"])
+            follower_odds = float(newest_follower["decimal_odds"])
+            follower_edge_percent = (follower_odds - movement.leader_new_odds) / movement.leader_new_odds
+
+            if follower_edge_percent < config.follower_edge_threshold_percent:
+                continue
+
+            signal_reason = (
+                "leader_move_and_follower_edge_threshold_met; "
+                f"leader_move={movement.odds_move_percent:.6f}; "
+                f"follower_edge={follower_edge_percent:.6f}"
+            )
+
+            signals.append(
+                DetectedSignal(
+                    event_id=movement.event_id,
+                    market_id=movement.market_id,
+                    selection_participant_id=movement.selection_participant_id,
+                    leader_source_name=movement.leader_source_name,
+                    follower_source_name=follower_source,
+                    leader_old_odds=movement.leader_old_odds,
+                    leader_new_odds=movement.leader_new_odds,
+                    odds_move_percent=movement.odds_move_percent,
+                    follower_odds=follower_odds,
+                    follower_edge_percent=follower_edge_percent,
+                    leader_move_window_minutes=movement.leader_move_window_minutes,
+                    minutes_to_start_at_signal=minutes_to_start,
+                    signal_status="open",
+                    signal_reason=signal_reason,
+                    detected_at=as_of_utc,
+                )
+            )
+
+    return signals
+
+
+def persist_detected_signals(connection: Any, signals: Iterable[DetectedSignal]) -> int:
+    rows = list(signals)
+    if not rows:
+        return 0
+
+    query = """
+    INSERT INTO detected_signals (
+        signal_id,
+        event_id,
+        market_id,
+        selection_participant_id,
+        leader_source_name,
+        follower_source_name,
+        leader_old_odds,
+        leader_new_odds,
+        odds_move_percent,
+        follower_odds,
+        follower_edge_percent,
+        leader_move_window_minutes,
+        minutes_to_start_at_signal,
+        signal_status,
+        signal_reason,
+        detected_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """
+
+    cursor = connection.cursor()
+    cursor.executemany(
+        query,
+        [
+            (
+                str(uuid4()),
+                signal.event_id,
+                signal.market_id,
+                signal.selection_participant_id,
+                signal.leader_source_name,
+                signal.follower_source_name,
+                signal.leader_old_odds,
+                signal.leader_new_odds,
+                signal.odds_move_percent,
+                signal.follower_odds,
+                signal.follower_edge_percent,
+                signal.leader_move_window_minutes,
+                signal.minutes_to_start_at_signal,
+                signal.signal_status,
+                signal.signal_reason,
+                signal.detected_at.isoformat(),
+            )
+            for signal in rows
+        ],
+    )
+    connection.commit()
+    return len(rows)
