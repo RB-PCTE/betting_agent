@@ -2,9 +2,22 @@
 
 ## 1) Project Identity and Purpose
 - **Project name**: Personal Odds-Analysis App
-- **Primary purpose**: Betting research and opportunity detection only.
-- **Automation boundary**: No automated bet placement.
-- **Human oversight**: Human review is required before any bet.
+- **Primary purpose**: Betting research, signal generation, and alerting only.
+- **Automation boundary**: This agent is a research/alerting tool only and must never execute betting actions.
+- **Human oversight**: The user manually reviews every signal/alert/candidate/recommendation and manually places any bet.
+
+### 1.1 Prohibited actions (hard safety boundary)
+The agent must never:
+- place bets
+- submit bets
+- automate bookmaker interaction
+- log in to bookmaker accounts
+- transfer money
+- bypass human approval
+
+### 1.2 Terminology policy
+- Preferred terms: **signal**, **alert**, **candidate**, **recommendation**.
+- Avoid terms implying automatic execution, including: **trade execution**, **bet execution**, **auto-betting**, **order placement**.
 
 ## 2) Scope (v1)
 - **Sport**: Tennis only.
