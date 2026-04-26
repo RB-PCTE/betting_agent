@@ -104,15 +104,26 @@ Current implementation provides:
 
 ## Human Approval Boundaries
 Hard boundaries:
-- No automatic bet placement.
-- No automatic execution against bookmaker/exchange APIs.
+- This agent is research and alerting only.
+- No automatic bet placement or bet submission.
+- No automation of bookmaker interaction or bookmaker account login.
+- No money transfer actions.
+- No bypass of explicit human approval.
 - Any bet action occurs only after human review outside this loop.
 
 Human decision checkpoints (target end-state):
-1. Review open detected signals.
-2. Decide whether to create/accept a bet candidate.
+1. Review open detected **signals/alerts**.
+2. Decide whether to create/accept a bet **candidate/recommendation**.
 3. Place bets manually (if any) using external interfaces.
 4. Log manual bet metadata for CLV/P&L follow-up.
+
+## Terminology Policy for Loop Outputs
+- Preferred output terms: **signal**, **alert**, **candidate**, **recommendation**.
+- Avoid execution-implying terms in docs/logs/specs, including:
+  - **trade execution**
+  - **bet execution**
+  - **auto-betting**
+  - **order placement**
 
 ## Idempotency and Determinism Notes
 - Ingestion uses deterministic snapshot IDs derived from stable fields.

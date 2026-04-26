@@ -16,8 +16,21 @@ This file intentionally does not redefine those rules.
 - Sport: tennis only.
 - Market: match winner only.
 - Strategy slice implemented: early leader line movement detection foundation.
-- Product mode: research/alert only.
-- Automation boundary: no automatic betting; human action is external/manual.
+- Product mode: research/alert only (signals, alerts, candidates, recommendations).
+- Automation boundary: this agent is strictly a research and alerting tool; human action is external/manual.
+
+## Safety Boundary: Manual-Only Wagering
+The user manually reviews opportunities and manually places any bets. The system must never:
+- place bets
+- submit bets
+- automate bookmaker interaction
+- log in to bookmaker accounts
+- transfer money
+- bypass human approval
+
+Terminology guidance:
+- Use: **signal**, **alert**, **candidate**, **recommendation**.
+- Do not use execution-implying terms such as: **trade execution**, **bet execution**, **auto-betting**, **order placement**.
 
 ## High-Level Architecture
 The system is organized into loop-ready stages:
@@ -120,7 +133,9 @@ To complete the standard loop-driven architecture, the next increments are:
 - Suspended/missing/uncertain rows are excluded from actionable flow.
 
 ## Non-Goals in Current Implementation
-- No automatic wagering or order placement.
+- No automatic wagering.
+- No bet submission or bookmaker account interaction automation.
+- No money transfer automation.
 - No schema mutation at runtime.
 - No autonomous bankroll or stake engine.
 - No production alert transport guarantees yet (CLI-focused foundations).
